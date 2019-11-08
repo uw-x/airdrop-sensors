@@ -105,7 +105,7 @@
 
 static ble_gap_adv_params_t m_adv_params;                     /**< Parameters to be passed to the stack when starting advertising. */
 static uint8_t m_adv_handle = BLE_GAP_ADV_SET_HANDLE_NOT_SET; /**< Advertising handle used to identify an advertising set. */
-static uint8_t m_enc_advdata[BLE_GAP_ADV_SET_DATA_SIZE_EXTENDED_MAX_SUPPORTED];  /**< Buffer for storing an encoded advertising set. */
+static uint8_t m_enc_advdata[BLE_GAP_ADV_SET_DATA_SIZE_MAX];  /**< Buffer for storing an encoded advertising set. */
 
 /**@brief Struct that contains pointers to the encoded advertising data. */
 static ble_gap_adv_data_t m_adv_data =
@@ -113,7 +113,7 @@ static ble_gap_adv_data_t m_adv_data =
         .adv_data =
             {
                 .p_data = m_enc_advdata,
-                .len = BLE_GAP_ADV_SET_DATA_SIZE_EXTENDED_MAX_SUPPORTED},
+                .len = BLE_GAP_ADV_SET_DATA_SIZE_MAX},
         .scan_rsp_data =
             {
                 .p_data = NULL,
@@ -142,7 +142,7 @@ void assert_nrf_callback(uint16_t line_num, const uint8_t *p_file_name)
  * @details This function sets up all the necessary GAP (Generic Access Profile) parameters of the
  *          device including the device name, appearance, and the preferred connection parameters.
  */
-static void gap_params_init(void)
+void gap_params_init(void)
 {
     ret_code_t err_code;
     ble_gap_conn_params_t gap_conn_params;
@@ -150,13 +150,13 @@ static void gap_params_init(void)
 
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&sec_mode);
 
-    err_code = sd_ble_gap_device_name_set(&sec_mode,
-                                          (const uint8_t *)DEVICE_NAME,
-                                          strlen(DEVICE_NAME));
-    APP_ERROR_CHECK(err_code);
+    // err_code = sd_ble_gap_device_name_set(&sec_mode,
+    //                                       (const uint8_t *)DEVICE_NAME,
+    //                                       strlen(DEVICE_NAME));
+    // APP_ERROR_CHECK(err_code);
 
-    err_code = sd_ble_gap_appearance_set(BLE_APPEARANCE_HID_MOUSE);
-    APP_ERROR_CHECK(err_code);
+    // err_code = sd_ble_gap_appearance_set(BLE_APPEARANCE_HID_MOUSE);
+    // APP_ERROR_CHECK(err_code);
 
     memset(&gap_conn_params, 0, sizeof(gap_conn_params));
 
@@ -174,26 +174,23 @@ static void gap_params_init(void)
  * @details Encodes the required advertising data and passes it to the stack.
  *          Also builds a structure to be passed to the stack when starting advertising.
  */
-static void advertising_init(void)
+void advertising_init(void)
 {
     uint32_t err_code;
     ble_advdata_t advdata;
     memset(&advdata, 0, sizeof(advdata));
 
     ble_advdata_manuf_data_t                  manuf_data; //Variable to hold manufacturer specific data
-    uint8_t data[]                            = "12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"; //Our data to advertise
-    manuf_data.company_identifier             =  0x0059; //Nordics company ID
+
+    uint8_t packetSize = BLE_GAP_ADV_SET_DATA_SIZE_MAX-4;
+    uint8_t data[packetSize];
+
     manuf_data.data.p_data                    = data;
     manuf_data.data.size                      = sizeof(data);
-    advdata.p_manuf_specific_data = &manuf_data;
-
-    advdata.name_type = BLE_ADVDATA_SHORT_NAME;
-    advdata.short_name_len = 7;
-    advdata.flags = BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE;
+    advdata.p_manuf_specific_data             = &manuf_data;
 
     // Initialize advertising parameters (used when starting advertising).
     memset(&m_adv_params, 0, sizeof(m_adv_params));
-
     m_adv_params.properties.type = BLE_GAP_ADV_TYPE_NONCONNECTABLE_NONSCANNABLE_UNDIRECTED;
     m_adv_params.p_peer_addr = NULL; // Undirected advertisement.
     m_adv_params.filter_policy = BLE_GAP_ADV_FP_ANY;
@@ -202,21 +199,22 @@ static void advertising_init(void)
     m_adv_params.primary_phy = BLE_GAP_PHY_AUTO;
     m_adv_params.secondary_phy = BLE_GAP_PHY_AUTO;
 
-    // Using this stops showing up as a beacon
-    m_adv_params.properties.type = BLE_GAP_ADV_TYPE_EXTENDED_NONCONNECTABLE_NONSCANNABLE_UNDIRECTED;
-
+    // pack advdata into m_adv_data
     err_code = ble_advdata_encode(&advdata, m_adv_data.adv_data.p_data, &m_adv_data.adv_data.len);
     APP_ERROR_CHECK(err_code);
 
+    for (int i = 1; i < m_adv_data.adv_data.len; i++) {
+        m_adv_data.adv_data.p_data[i] = 0x11;
+    }
+
+    // start advertising with m_adv_data and m_adv_params
     err_code = sd_ble_gap_adv_set_configure(&m_adv_handle, &m_adv_data, &m_adv_params);
     APP_ERROR_CHECK(err_code);
 }
 
-
-
 /**@brief Function for starting advertising.
  */
-static void advertising_start(void)
+void advertising_start(void)
 {
     ret_code_t err_code;
 
@@ -231,7 +229,7 @@ static void advertising_start(void)
  *
  * @details Initializes the SoftDevice and the BLE event interrupt.
  */
-static void ble_stack_init(void)
+void ble_stack_init(void)
 {
     ret_code_t err_code;
 
@@ -308,7 +306,7 @@ int main(void)
     advertising_init();
 
     // Start execution.
-    NRF_LOG_INFO("Extended beacon example started.");
+    NRF_LOG_INFO("MiniBee started.");
     advertising_start();
 
     // Enter main loop.
