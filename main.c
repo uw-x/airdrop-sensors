@@ -177,17 +177,6 @@ void gap_params_init(void)
 void advertising_init(void)
 {
     uint32_t err_code;
-    ble_advdata_t advdata;
-    memset(&advdata, 0, sizeof(advdata));
-
-    ble_advdata_manuf_data_t                  manuf_data; //Variable to hold manufacturer specific data
-
-    uint8_t packetSize = BLE_GAP_ADV_SET_DATA_SIZE_MAX-4;
-    uint8_t data[packetSize];
-
-    manuf_data.data.p_data                    = data;
-    manuf_data.data.size                      = sizeof(data);
-    advdata.p_manuf_specific_data             = &manuf_data;
 
     // Initialize advertising parameters (used when starting advertising).
     memset(&m_adv_params, 0, sizeof(m_adv_params));
@@ -199,17 +188,15 @@ void advertising_init(void)
     m_adv_params.primary_phy = BLE_GAP_PHY_AUTO;
     m_adv_params.secondary_phy = BLE_GAP_PHY_AUTO;
 
-    // pack advdata into m_adv_data
-    err_code = ble_advdata_encode(&advdata, m_adv_data.adv_data.p_data, &m_adv_data.adv_data.len);
-    APP_ERROR_CHECK(err_code);
-
+    // Data
+    m_adv_data.adv_data.p_data[0] = 0x1E; // length
     for (int i = 1; i < m_adv_data.adv_data.len; i++) {
         m_adv_data.adv_data.p_data[i] = 0x11;
     }
 
     // start advertising with m_adv_data and m_adv_params
     err_code = sd_ble_gap_adv_set_configure(&m_adv_handle, &m_adv_data, &m_adv_params);
-    APP_ERROR_CHECK(err_code);
+    NRF_LOG_INFO("error code: %d\n", err_code);
 }
 
 /**@brief Function for starting advertising.
@@ -304,6 +291,9 @@ int main(void)
     ble_stack_init();
     gap_params_init();
     advertising_init();
+
+    // Timer
+    // app_timer_create(, APP_TIMER_MODE_REPEATED, );
 
     // Start execution.
     NRF_LOG_INFO("MiniBee started.");
