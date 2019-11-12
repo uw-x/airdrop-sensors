@@ -107,6 +107,8 @@ static ble_gap_adv_params_t m_adv_params;                     /**< Parameters to
 static uint8_t m_adv_handle = BLE_GAP_ADV_SET_HANDLE_NOT_SET; /**< Advertising handle used to identify an advertising set. */
 static uint8_t m_enc_advdata[BLE_GAP_ADV_SET_DATA_SIZE_MAX];  /**< Buffer for storing an encoded advertising set. */
 
+APP_TIMER_DEF(advertisingUpdateTimer);
+#define ADVERTISING_CHANNEL 37
 /**@brief Struct that contains pointers to the encoded advertising data. */
 static ble_gap_adv_data_t m_adv_data =
     {
@@ -188,12 +190,12 @@ void advertising_init(void)
     m_adv_params.primary_phy = BLE_GAP_PHY_AUTO;
     m_adv_params.secondary_phy = BLE_GAP_PHY_AUTO;
     m_adv_params.channel_mask[4] = 0xC0; // advertise on 37 only
+    // m_adv_params.channel_mask[4] = 0xA0; // advertise on 38 only
+    // m_adv_params.channel_mask[4] = 0x60; // advertise on 39 only
 
     // Data
     m_adv_data.adv_data.p_data[0] = 0x1E; // length
-    for (int i = 1; i < m_adv_data.adv_data.len; i++) {
-        m_adv_data.adv_data.p_data[i] = 0x11;
-    }
+    for (int i = 1; i < m_adv_data.adv_data.len; i++) { m_adv_data.adv_data.p_data[i] = 0x0; }
 
     // start advertising with m_adv_data and m_adv_params
     err_code = sd_ble_gap_adv_set_configure(&m_adv_handle, &m_adv_data, &m_adv_params);
@@ -279,17 +281,52 @@ static void idle_state_handle(void)
     }
 }
 
-APP_TIMER_DEF(advertisingUpdateTimer);
+uint8_t reverseByte(uint8_t byte)
+{
+    uint8_t reversedBits = 0;
+
+    for (uint8_t i = 0; i < 4; i++) {
+        reversedBits |= (byte >> (7-(2*i))) & (0x01 << i);
+        reversedBits |= (byte << (7-(2*i))) & (0x80 >> i);
+    }
+
+    return reversedBits;
+}
+
+static uint8_t whiten(uint8_t byte, bool reset)
+{
+    static uint8_t shiftRegister = ADVERTISING_CHANNEL | (1 << 6);
+    uint8_t whitenedByte = 0;
+    uint8_t feedbackBit = 0;
+
+    if (reset) { shiftRegister = ADVERTISING_CHANNEL | (1 << 6); }
+
+    for (int i = 0; i < 8; i++) {
+        whitenedByte |= ((byte & 0x1) ^ (shiftRegister & 0x1)) << i;
+        byte = byte >> 1;
+        feedbackBit = shiftRegister & 0x1;
+        shiftRegister = shiftRegister >> 1; // rotate right
+
+        // clear 0th bit and set it to feedback bit
+        shiftRegister = (shiftRegister & ~(1 << 6)) | (feedbackBit << 6);
+
+        // clear 4th bit and xor with feedback bit
+        shiftRegister = (shiftRegister & ~(1 << 2)) | ((((shiftRegister >> 2) & 0x1) ^ feedbackBit) << 2);
+    }
+
+    return whitenedByte;
+}
 
 static void advertisingUpdateTimerHandler(void * p_context)
 {
-    static uint8_t flip = 0;
-    flip++;
+    whiten(0, true); // reset shift register
+    for (int i = 0; i < 8; i++) { whiten(0, false); } // rotate shift register until at first data bit
 
-     // Data
+    // payload
     m_adv_data.adv_data.p_data[0] = 0x1E; // length
+
     for (int i = 1; i < m_adv_data.adv_data.len; i++) {
-        m_adv_data.adv_data.p_data[i] = flip;
+        m_adv_data.adv_data.p_data[i] = whiten(0xFF, false); // all ones
     }
 
     // start advertising with m_adv_data and m_adv_params
@@ -321,15 +358,17 @@ int main(void)
 
     // Start execution.
     NRF_LOG_INFO("MiniBee started.");
+
+    // test whitener
+    whiten(0, true); // reset shift register
+    for (int i = 0; i < 8; i++) { whiten(0, false); } // rotate shift register until at first data bit
+    for (int i = 1; i < m_adv_data.adv_data.len; i++) {
+       NRF_LOG_INFO("%02X ", whiten(0xFF, false)); // all ones
+    }
+
     advertising_start();
 
-    // Enter main loop.
-    for (;;)
-    {
+    for (;;) {
         idle_state_handle();
     }
 }
-
-/**
- * @}
- */
