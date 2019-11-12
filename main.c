@@ -187,6 +187,7 @@ void advertising_init(void)
     m_adv_params.duration = BLE_GAP_ADV_TIMEOUT_GENERAL_UNLIMITED;
     m_adv_params.primary_phy = BLE_GAP_PHY_AUTO;
     m_adv_params.secondary_phy = BLE_GAP_PHY_AUTO;
+    m_adv_params.channel_mask[4] = 0xC0; // advertise on 37 only
 
     // Data
     m_adv_data.adv_data.p_data[0] = 0x1E; // length
@@ -278,6 +279,23 @@ static void idle_state_handle(void)
     }
 }
 
+APP_TIMER_DEF(advertisingUpdateTimer);
+
+static void advertisingUpdateTimerHandler(void * p_context)
+{
+    static uint8_t flip = 0;
+    flip++;
+
+     // Data
+    m_adv_data.adv_data.p_data[0] = 0x1E; // length
+    for (int i = 1; i < m_adv_data.adv_data.len; i++) {
+        m_adv_data.adv_data.p_data[i] = flip;
+    }
+
+    // start advertising with m_adv_data and m_adv_params
+    sd_ble_gap_adv_set_configure(&m_adv_handle, &m_adv_data, &m_adv_params);
+}
+
 /**
  * @brief Function for application main entry.
  */
@@ -293,7 +311,13 @@ int main(void)
     advertising_init();
 
     // Timer
-    // app_timer_create(, APP_TIMER_MODE_REPEATED, );
+    ret_code_t err_code;
+    err_code = app_timer_create(&advertisingUpdateTimer,
+        APP_TIMER_MODE_REPEATED,
+            advertisingUpdateTimerHandler);
+    APP_ERROR_CHECK(err_code);
+
+    app_timer_start(advertisingUpdateTimer, APP_TIMER_TICKS(200), NULL);
 
     // Start execution.
     NRF_LOG_INFO("MiniBee started.");
