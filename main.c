@@ -317,10 +317,22 @@ static uint8_t whiten(uint8_t byte, bool reset)
     return whitenedByte;
 }
 
-static void advertisingUpdateTimerHandler(void * p_context)
+static void testWhitener()
 {
+    // test whitener
     whiten(0, true); // reset shift register
     for (int i = 0; i < 8; i++) { whiten(0, false); } // rotate shift register until at first data bit
+    for (int i = 1; i < m_adv_data.adv_data.len; i++) {
+       NRF_LOG_INFO("%02X ", whiten(0xFF, false)); // all ones
+    }
+}
+
+static void advertisingUpdateTimerHandler(void * p_context)
+{
+    // rotate shift register until at first data bit
+    // length:2 address:6 payloadLength:1
+    whiten(0, true); // reset shift register
+    for (int i = 0; i < 8; i++) { whiten(0, false); }
 
     // payload
     m_adv_data.adv_data.p_data[0] = 0x1E; // length
@@ -351,20 +363,13 @@ int main(void)
     ret_code_t err_code;
     err_code = app_timer_create(&advertisingUpdateTimer,
         APP_TIMER_MODE_REPEATED,
-            advertisingUpdateTimerHandler);
+        advertisingUpdateTimerHandler);
     APP_ERROR_CHECK(err_code);
 
     app_timer_start(advertisingUpdateTimer, APP_TIMER_TICKS(200), NULL);
 
     // Start execution.
     NRF_LOG_INFO("MiniBee started.");
-
-    // test whitener
-    whiten(0, true); // reset shift register
-    for (int i = 0; i < 8; i++) { whiten(0, false); } // rotate shift register until at first data bit
-    for (int i = 1; i < m_adv_data.adv_data.len; i++) {
-       NRF_LOG_INFO("%02X ", whiten(0xFF, false)); // all ones
-    }
 
     advertising_start();
 
