@@ -317,7 +317,7 @@ static uint8_t whiten(uint8_t byte, bool reset)
     return whitenedByte;
 }
 
-static void testWhitener()
+void testWhitener()
 {
     // test whitener
     whiten(0, true); // reset shift register
@@ -325,6 +325,32 @@ static void testWhitener()
     for (int i = 1; i < m_adv_data.adv_data.len; i++) {
        NRF_LOG_INFO("%02X ", whiten(0xFF, false)); // all ones
     }
+}
+
+// This function stretches data and loads it into m_adv_data.adv_data.p_data
+static void queueStretchedData(uint8_t* data, uint8_t dataLength, uint8_t stretch)
+{
+    if ((dataLength * stretch) > 30) { NRF_LOG_INFO("Error, can't fit stretchedData into 30 bytes"); }
+
+    // zero out advertising packet
+    for (int i = 1; i < m_adv_data.adv_data.len; i++) { m_adv_data.adv_data.p_data[i] = 0; }
+
+    uint8_t bitsInserted = 8;
+    uint8_t bit = 0;
+    for (int i = 0; i < dataLength; i++) {
+        for (int b = 0; b < 8; b++) {
+            bit = (data[i] & (0x80 >> b)) >> (7 - b);
+            for (int j = 0; j < stretch; j++) {
+                m_adv_data.adv_data.p_data[bitsInserted/8] |= bit << (7-(bitsInserted%8));
+                bitsInserted++;
+            }
+        }
+    }
+
+    // debug
+    for (int i = 0; i < dataLength; i++) { NRF_LOG_INFO("%02X", data[i]); }
+    NRF_LOG_INFO("");
+    for (int i = 0; i < m_adv_data.adv_data.len; i++) { NRF_LOG_INFO("%02X", m_adv_data.adv_data.p_data[i]); }
 }
 
 static void advertisingUpdateTimerHandler(void * p_context)
@@ -370,6 +396,13 @@ int main(void)
 
     // Start execution.
     NRF_LOG_INFO("MiniBee started.");
+
+    // 30 / frequency divider
+    // uint8_t dataLength = 15;
+    // uint8_t data[15];
+    // for (int i = 0; i < dataLength; i++) { data[i] = 0xAA; }
+
+    queueStretchedData(data, dataLength, 30/dataLength);
 
     advertising_start();
 
