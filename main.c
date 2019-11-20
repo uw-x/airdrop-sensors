@@ -199,7 +199,7 @@ void advertising_init(void)
 
     // start advertising with m_adv_data and m_adv_params
     err_code = sd_ble_gap_adv_set_configure(&m_adv_handle, &m_adv_data, &m_adv_params);
-    NRF_LOG_INFO("error code: %d\n", err_code);
+    if (err_code == NRF_SUCCESS) { NRF_LOG_INFO("Advertising started", err_code); }
 }
 
 /**@brief Function for starting advertising.
@@ -327,13 +327,12 @@ void testWhitener()
     }
 }
 
+static uint8_t stretchedData[30] = {0};
+
 // This function stretches data and loads it into m_adv_data.adv_data.p_data
 static void queueStretchedData(uint8_t* data, uint8_t dataLength, uint8_t stretch)
 {
     if ((dataLength * stretch) > 30) { NRF_LOG_INFO("Error, can't fit stretchedData into 30 bytes"); }
-
-    // zero out advertising packet
-    for (int i = 1; i < m_adv_data.adv_data.len; i++) { m_adv_data.adv_data.p_data[i] = 0; }
 
     uint8_t bitsInserted = 8;
     uint8_t bit = 0;
@@ -341,17 +340,14 @@ static void queueStretchedData(uint8_t* data, uint8_t dataLength, uint8_t stretc
         for (int b = 0; b < 8; b++) {
             bit = (data[i] & (0x80 >> b)) >> (7 - b);
             for (int j = 0; j < stretch; j++) {
-                m_adv_data.adv_data.p_data[bitsInserted/8] |= bit << (7-(bitsInserted%8));
+                stretchedData[bitsInserted/8] |= bit << (7-(bitsInserted%8));
                 bitsInserted++;
             }
         }
     }
-
-    // debug
-    for (int i = 0; i < dataLength; i++) { NRF_LOG_INFO("%02X", data[i]); }
-    NRF_LOG_INFO("");
-    for (int i = 0; i < m_adv_data.adv_data.len; i++) { NRF_LOG_INFO("%02X", m_adv_data.adv_data.p_data[i]); }
 }
+
+#define FREQUENCY_DIVIDER 1
 
 static void advertisingUpdateTimerHandler(void * p_context)
 {
@@ -363,8 +359,15 @@ static void advertisingUpdateTimerHandler(void * p_context)
     // payload
     m_adv_data.adv_data.p_data[0] = 0x1E; // length
 
+    // load desired data at (1Mb / frequencyDivider) into data
+    uint8_t data[30] = {0};
+    uint8_t dataLength = 30 / FREQUENCY_DIVIDER;
+    for (int i = 0; i < dataLength; i++) { data[i] = i; }
+    queueStretchedData(data, dataLength, 30/dataLength);
+
+    // copy stretchedData into actual advertising packet
     for (int i = 1; i < m_adv_data.adv_data.len; i++) {
-        m_adv_data.adv_data.p_data[i] = whiten(0xFF, false); // all ones
+        m_adv_data.adv_data.p_data[i] = whiten(stretchedData[i], false); // all ones
     }
 
     // start advertising with m_adv_data and m_adv_params
@@ -395,14 +398,14 @@ int main(void)
     app_timer_start(advertisingUpdateTimer, APP_TIMER_TICKS(200), NULL);
 
     // Start execution.
-    NRF_LOG_INFO("MiniBee started.");
+    NRF_LOG_INFO("MiniBee started");
 
-    // 30 / frequency divider
-    // uint8_t dataLength = 15;
-    // uint8_t data[15];
-    // for (int i = 0; i < dataLength; i++) { data[i] = 0xAA; }
-
+    NRF_LOG_INFO("Expected:");
+    uint8_t data[30] = {0};
+    uint8_t dataLength = 30 / FREQUENCY_DIVIDER;
+    for (int i = 0; i < dataLength; i++) { data[i] = i; }
     queueStretchedData(data, dataLength, 30/dataLength);
+    for (int i = 0; i < 30; i++) { NRF_LOG_INFO("%02X", stretchedData[i]); }
 
     advertising_start();
 
