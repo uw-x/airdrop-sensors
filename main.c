@@ -399,6 +399,7 @@ int main(void)
 
     // Start execution.
     NRF_LOG_INFO("MiniBee started");
+    NRF_LOG_INFO("Last modified 12.17.2019");
 
     NRF_LOG_INFO("Expected:");
     uint8_t data[30] = {0};
