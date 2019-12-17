@@ -327,7 +327,7 @@ void testWhitener()
     }
 }
 
-static uint8_t stretchedData[30] = {0};
+static uint8_t stretchedData[31] = {0};
 
 // This function stretches data and loads it into m_adv_data.adv_data.p_data
 static void queueStretchedData(uint8_t* data, uint8_t dataLength, uint8_t stretch)
@@ -347,7 +347,7 @@ static void queueStretchedData(uint8_t* data, uint8_t dataLength, uint8_t stretc
     }
 }
 
-#define FREQUENCY_DIVIDER 1
+#define FREQUENCY_DIVIDER 30
 
 static void advertisingUpdateTimerHandler(void * p_context)
 {
@@ -362,12 +362,12 @@ static void advertisingUpdateTimerHandler(void * p_context)
     // load desired data at (1Mb / frequencyDivider) into data
     uint8_t data[30] = {0};
     uint8_t dataLength = 30 / FREQUENCY_DIVIDER;
-    for (int i = 0; i < dataLength; i++) { data[i] = i; }
+    for (int i = 0; i < dataLength; i++) { data[i] = i+0xA1; }
     queueStretchedData(data, dataLength, 30/dataLength);
 
     // copy stretchedData into actual advertising packet
     for (int i = 1; i < m_adv_data.adv_data.len; i++) {
-        m_adv_data.adv_data.p_data[i] = whiten(stretchedData[i], false); // all ones
+        m_adv_data.adv_data.p_data[i] = whiten(reverseByte(stretchedData[i]), false); // all ones
     }
 
     // start advertising with m_adv_data and m_adv_params
@@ -403,9 +403,15 @@ int main(void)
     NRF_LOG_INFO("Expected:");
     uint8_t data[30] = {0};
     uint8_t dataLength = 30 / FREQUENCY_DIVIDER;
-    for (int i = 0; i < dataLength; i++) { data[i] = i; }
+    for (int i = 0; i < dataLength; i++) { data[i] = i+0xA1; }
     queueStretchedData(data, dataLength, 30/dataLength);
-    for (int i = 0; i < 30; i++) { NRF_LOG_INFO("%02X", stretchedData[i]); }
+    for (int i = 1; i < 31; i++) { NRF_LOG_INFO("%02X", reverseByte(stretchedData[i])); }
+
+
+    // Use this one to print out and generate packets in MATLAB
+    // for (int i = 1; i < 31; i++) {
+    //     NRF_LOG_INFO("%02X", (stretchedData[i]));
+    // }
 
     advertising_start();
 
