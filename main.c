@@ -72,6 +72,7 @@
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
+#include "nrf_delay.h"
 
 // GAP INIT #DEFINES
 #define DEVICE_NAME "MINIBEE"
@@ -82,7 +83,7 @@
 
 #define APP_BLE_CONN_CFG_TAG 1 /**< A tag identifying the SoftDevice BLE configuration. */
 
-#define NON_CONNECTABLE_ADV_INTERVAL MSEC_TO_UNITS(100, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
+#define NON_CONNECTABLE_ADV_INTERVAL MSEC_TO_UNITS(20, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
 
 #define APP_BEACON_INFO_LENGTH 0x17   /**< Total length of information advertised by the Beacon. */
 #define APP_ADV_DATA_LENGTH 0x15      /**< Length of manufacturer specific data in the advertisement. */
@@ -108,7 +109,8 @@ static uint8_t m_adv_handle = BLE_GAP_ADV_SET_HANDLE_NOT_SET; /**< Advertising h
 static uint8_t m_enc_advdata[BLE_GAP_ADV_SET_DATA_SIZE_MAX];  /**< Buffer for storing an encoded advertising set. */
 
 APP_TIMER_DEF(advertisingUpdateTimer);
-#define ADVERTISING_CHANNEL 37
+static uint8_t advertisingChannel = 37;
+
 /**@brief Struct that contains pointers to the encoded advertising data. */
 static ble_gap_adv_data_t m_adv_data =
     {
@@ -151,14 +153,6 @@ void gap_params_init(void)
     ble_gap_conn_sec_mode_t sec_mode;
 
     BLE_GAP_CONN_SEC_MODE_SET_OPEN(&sec_mode);
-
-    // err_code = sd_ble_gap_device_name_set(&sec_mode,
-    //                                       (const uint8_t *)DEVICE_NAME,
-    //                                       strlen(DEVICE_NAME));
-    // APP_ERROR_CHECK(err_code);
-
-    // err_code = sd_ble_gap_appearance_set(BLE_APPEARANCE_HID_MOUSE);
-    // APP_ERROR_CHECK(err_code);
 
     memset(&gap_conn_params, 0, sizeof(gap_conn_params));
 
@@ -209,7 +203,8 @@ void advertising_start(void)
     ret_code_t err_code;
 
     err_code = sd_ble_gap_adv_start(m_adv_handle, APP_BLE_CONN_CFG_TAG);
-    APP_ERROR_CHECK(err_code);
+    if (err_code != NRF_SUCCESS) { NRF_LOG_INFO("err_code %d", err_code); }
+    // APP_ERROR_CHECK(err_code);
 
     err_code = bsp_indication_set(BSP_INDICATE_ADVERTISING);
     APP_ERROR_CHECK(err_code);
@@ -219,6 +214,7 @@ void advertising_start(void)
  *
  * @details Initializes the SoftDevice and the BLE event interrupt.
  */
+
 void ble_stack_init(void)
 {
     ret_code_t err_code;
@@ -295,11 +291,11 @@ uint8_t reverseByte(uint8_t byte)
 
 static uint8_t whiten(uint8_t byte, bool reset)
 {
-    static uint8_t shiftRegister = ADVERTISING_CHANNEL | (1 << 6);
+    static uint8_t shiftRegister = 37 | (1 << 6);
     uint8_t whitenedByte = 0;
     uint8_t feedbackBit = 0;
 
-    if (reset) { shiftRegister = ADVERTISING_CHANNEL | (1 << 6); }
+    if (reset) { shiftRegister = advertisingChannel | (1 << 6); }
 
     for (int i = 0; i < 8; i++) {
         whitenedByte |= ((byte & 0x1) ^ (shiftRegister & 0x1)) << i;
@@ -348,30 +344,47 @@ static void queueStretchedData(uint8_t* data, uint8_t dataLength, uint8_t stretc
 }
 
 #define FREQUENCY_DIVIDER 30
+#define START_WAIT_TIME_MS 12
+#define STOP_WAIT_TIME_MS 1
 
 static void advertisingUpdateTimerHandler(void * p_context)
 {
-    // rotate shift register until at first data bit
-    // length:2 address:6 payloadLength:1
-    whiten(0, true); // reset shift register
-    for (int i = 0; i < 8; i++) { whiten(0, false); }
+    static bool restart = true;
 
-    // payload
-    m_adv_data.adv_data.p_data[0] = 0x1E; // length
+    if (restart) {
+        // rotate shift register until at first data bit
+        // length:2 address:6 payloadLength:1
+        advertisingChannel = 37 + (((advertisingChannel+1) % 37) % 3);
 
-    // load desired data at (1Mb / frequencyDivider) into data
-    uint8_t data[30] = {0};
-    uint8_t dataLength = 30 / FREQUENCY_DIVIDER;
-    for (int i = 0; i < dataLength; i++) { data[i] = i+0xA1; }
-    queueStretchedData(data, dataLength, 30/dataLength);
+        // if (advertisingChannel == 37) { m_adv_params.channel_mask[4] = 0xC0; }
+        // else if (advertisingChannel == 38) { m_adv_params.channel_mask[4] = 0xA0; }
+        // else if (advertisingChannel == 39) { m_adv_params.channel_mask[4] = 0x60; }
 
-    // copy stretchedData into actual advertising packet
-    for (int i = 1; i < m_adv_data.adv_data.len; i++) {
-        m_adv_data.adv_data.p_data[i] = whiten(reverseByte(stretchedData[i]), false); // all ones
+        whiten(0, true); // reset shift register
+        for (int i = 0; i < 8; i++) { whiten(0, false); }
+
+        // payload
+        m_adv_data.adv_data.p_data[0] = 0x1E; // length
+
+        // load desired data at (1Mb / frequencyDivider) into data
+        uint8_t data[30] = {0};
+        uint8_t dataLength = 30 / FREQUENCY_DIVIDER;
+        for (int i = 0; i < dataLength; i++) { data[i] = i+0xA1; }
+        queueStretchedData(data, dataLength, 30/dataLength);
+
+        // copy stretchedData into actual advertising packet
+        for (int i = 1; i < m_adv_data.adv_data.len; i++) {
+            m_adv_data.adv_data.p_data[i] = whiten(reverseByte(stretchedData[i]), false); // all ones
+        }
+
+        // start advertising with m_adv_data and m_adv_params
+        sd_ble_gap_adv_set_configure(&m_adv_handle, &m_adv_data, &m_adv_params);
     }
 
-    // start advertising with m_adv_data and m_adv_params
-    sd_ble_gap_adv_set_configure(&m_adv_handle, &m_adv_data, &m_adv_params);
+    if (restart) { advertising_start(); } else { sd_ble_gap_adv_stop(m_adv_handle); }
+    if (advertisingChannel == 39) { nrf_delay_ms(10); }
+    app_timer_start(advertisingUpdateTimer, APP_TIMER_TICKS(restart ? START_WAIT_TIME_MS : STOP_WAIT_TIME_MS), NULL);
+    restart = !restart;
 }
 
 /**
@@ -391,11 +404,11 @@ int main(void)
     // Timer
     ret_code_t err_code;
     err_code = app_timer_create(&advertisingUpdateTimer,
-        APP_TIMER_MODE_REPEATED,
+        APP_TIMER_MODE_SINGLE_SHOT,
         advertisingUpdateTimerHandler);
     APP_ERROR_CHECK(err_code);
 
-    app_timer_start(advertisingUpdateTimer, APP_TIMER_TICKS(200), NULL);
+    app_timer_start(advertisingUpdateTimer, APP_TIMER_TICKS(START_WAIT_TIME_MS), NULL);
 
     // Start execution.
     NRF_LOG_INFO("MiniBee started");
@@ -407,7 +420,6 @@ int main(void)
     for (int i = 0; i < dataLength; i++) { data[i] = i+0xA1; }
     queueStretchedData(data, dataLength, 30/dataLength);
     for (int i = 1; i < 31; i++) { NRF_LOG_INFO("%02X", reverseByte(stretchedData[i])); }
-
 
     // Use this one to print out and generate packets in MATLAB
     // for (int i = 1; i < 31; i++) {
