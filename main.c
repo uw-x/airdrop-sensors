@@ -84,6 +84,7 @@
 #define APP_BLE_CONN_CFG_TAG 1 /**< A tag identifying the SoftDevice BLE configuration. */
 
 #define NON_CONNECTABLE_ADV_INTERVAL MSEC_TO_UNITS(20, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
+// #define NON_CONNECTABLE_ADV_INTERVAL MSEC_TO_UNITS(1000, UNIT_10_MS)
 
 #define APP_BEACON_INFO_LENGTH 0x17   /**< Total length of information advertised by the Beacon. */
 #define APP_ADV_DATA_LENGTH 0x15      /**< Length of manufacturer specific data in the advertisement. */
@@ -111,7 +112,6 @@ static uint8_t m_enc_advdata[BLE_GAP_ADV_SET_DATA_SIZE_MAX];  /**< Buffer for st
 APP_TIMER_DEF(advertisingUpdateTimer);
 static uint8_t advertisingChannel = 37;
 
-/**@brief Struct that contains pointers to the encoded advertising data. */
 static ble_gap_adv_data_t m_adv_data =
     {
         .adv_data =
@@ -125,27 +125,11 @@ static ble_gap_adv_data_t m_adv_data =
 
             }};
 
-/**@brief Callback function for asserts in the SoftDevice.
- *
- * @details This function will be called in case of an assert in the SoftDevice.
- *
- * @warning This handler is an example only and does not fit a final product. You need to analyze
- *          how your product is supposed to react in case of Assert.
- * @warning On assert from the SoftDevice, the system can only recover on reset.
- *
- * @param[in]   line_num   Line number of the failing ASSERT call.
- * @param[in]   file_name  File name of the failing ASSERT call.
- */
 void assert_nrf_callback(uint16_t line_num, const uint8_t *p_file_name)
 {
     app_error_handler(DEAD_BEEF, line_num, p_file_name);
 }
 
-/**@brief Function for the GAP initialization.
- *
- * @details This function sets up all the necessary GAP (Generic Access Profile) parameters of the
- *          device including the device name, appearance, and the preferred connection parameters.
- */
 void gap_params_init(void)
 {
     ret_code_t err_code;
@@ -165,15 +149,8 @@ void gap_params_init(void)
     APP_ERROR_CHECK(err_code);
 }
 
-/**@brief Function for initializing the Advertising functionality.
- *
- * @details Encodes the required advertising data and passes it to the stack.
- *          Also builds a structure to be passed to the stack when starting advertising.
- */
 void advertising_init(void)
 {
-    uint32_t err_code;
-
     // Initialize advertising parameters (used when starting advertising).
     memset(&m_adv_params, 0, sizeof(m_adv_params));
     m_adv_params.properties.type = BLE_GAP_ADV_TYPE_NONCONNECTABLE_NONSCANNABLE_UNDIRECTED;
@@ -192,28 +169,16 @@ void advertising_init(void)
     for (int i = 1; i < m_adv_data.adv_data.len; i++) { m_adv_data.adv_data.p_data[i] = 0x0; }
 
     // start advertising with m_adv_data and m_adv_params
-    err_code = sd_ble_gap_adv_set_configure(&m_adv_handle, &m_adv_data, &m_adv_params);
-    if (err_code == NRF_SUCCESS) { NRF_LOG_INFO("Advertising started", err_code); }
+    sd_ble_gap_adv_set_configure(&m_adv_handle, &m_adv_data, &m_adv_params);
 }
 
-/**@brief Function for starting advertising.
- */
 void advertising_start(void)
 {
     ret_code_t err_code;
-
     err_code = sd_ble_gap_adv_start(m_adv_handle, APP_BLE_CONN_CFG_TAG);
-    if (err_code != NRF_SUCCESS) { NRF_LOG_INFO("err_code %d", err_code); }
-    // APP_ERROR_CHECK(err_code);
-
     err_code = bsp_indication_set(BSP_INDICATE_ADVERTISING);
     APP_ERROR_CHECK(err_code);
 }
-
-/**@brief Function for initializing the BLE stack.
- *
- * @details Initializes the SoftDevice and the BLE event interrupt.
- */
 
 void ble_stack_init(void)
 {
@@ -233,8 +198,7 @@ void ble_stack_init(void)
     APP_ERROR_CHECK(err_code);
 }
 
-/**@brief Function for initializing logging. */
-static void log_init(void)
+void log_init(void)
 {
     ret_code_t err_code = NRF_LOG_INIT(NULL);
     APP_ERROR_CHECK(err_code);
@@ -242,22 +206,18 @@ static void log_init(void)
     NRF_LOG_DEFAULT_BACKENDS_INIT();
 }
 
-/**@brief Function for initializing LEDs. */
-static void leds_init(void)
+void leds_init(void)
 {
     ret_code_t err_code = bsp_init(BSP_INIT_LEDS, NULL);
     APP_ERROR_CHECK(err_code);
 }
 
-/**@brief Function for initializing timers. */
 static void timers_init(void)
 {
     ret_code_t err_code = app_timer_init();
     APP_ERROR_CHECK(err_code);
 }
 
-/**@brief Function for initializing power management.
- */
 static void power_management_init(void)
 {
     ret_code_t err_code;
@@ -265,10 +225,6 @@ static void power_management_init(void)
     APP_ERROR_CHECK(err_code);
 }
 
-/**@brief Function for handling the idle state (main loop).
- *
- * @details If there is no pending log operation, then sleep until next the next event occurs.
- */
 static void idle_state_handle(void)
 {
     if (NRF_LOG_PROCESS() == false)
@@ -319,7 +275,7 @@ void testWhitener()
     whiten(0, true); // reset shift register
     for (int i = 0; i < 8; i++) { whiten(0, false); } // rotate shift register until at first data bit
     for (int i = 1; i < m_adv_data.adv_data.len; i++) {
-       NRF_LOG_INFO("%02X ", whiten(0xFF, false)); // all ones
+    //    NRF_LOG_INFO("%02X ", whiten(0xFF, false)); // all ones
     }
 }
 
@@ -328,7 +284,7 @@ static uint8_t stretchedData[31] = {0};
 // This function stretches data and loads it into m_adv_data.adv_data.p_data
 static void queueStretchedData(uint8_t* data, uint8_t dataLength, uint8_t stretch)
 {
-    if ((dataLength * stretch) > 30) { NRF_LOG_INFO("Error, can't fit stretchedData into 30 bytes"); }
+    // if ((dataLength * stretch) > 30) { NRF_LOG_INFO("Error, can't fit stretchedData into 30 bytes"); }
 
     uint8_t bitsInserted = 8;
     uint8_t bit = 0;
@@ -344,8 +300,10 @@ static void queueStretchedData(uint8_t* data, uint8_t dataLength, uint8_t stretc
 }
 
 #define FREQUENCY_DIVIDER 30
-#define START_WAIT_TIME_MS 12
+
+#define START_WAIT_TIME_MS 19 // 500uA average current
 #define STOP_WAIT_TIME_MS 1
+// #define STOP_WAIT_TIME_MS 10000
 
 static void advertisingUpdateTimerHandler(void * p_context)
 {
@@ -356,9 +314,9 @@ static void advertisingUpdateTimerHandler(void * p_context)
         // length:2 address:6 payloadLength:1
         advertisingChannel = 37 + (((advertisingChannel+1) % 37) % 3);
 
-        // if (advertisingChannel == 37) { m_adv_params.channel_mask[4] = 0xC0; }
-        // else if (advertisingChannel == 38) { m_adv_params.channel_mask[4] = 0xA0; }
-        // else if (advertisingChannel == 39) { m_adv_params.channel_mask[4] = 0x60; }
+        if (advertisingChannel == 37) { m_adv_params.channel_mask[4] = 0xC0; }
+        else if (advertisingChannel == 38) { m_adv_params.channel_mask[4] = 0xA0; }
+        else if (advertisingChannel == 39) { m_adv_params.channel_mask[4] = 0x60; }
 
         whiten(0, true); // reset shift register
         for (int i = 0; i < 8; i++) { whiten(0, false); }
@@ -379,27 +337,24 @@ static void advertisingUpdateTimerHandler(void * p_context)
 
         // start advertising with m_adv_data and m_adv_params
         sd_ble_gap_adv_set_configure(&m_adv_handle, &m_adv_data, &m_adv_params);
+        advertising_start();
+    } else {
+        sd_ble_gap_adv_stop(m_adv_handle);
     }
 
-    if (restart) { advertising_start(); } else { sd_ble_gap_adv_stop(m_adv_handle); }
-    if (advertisingChannel == 39) { nrf_delay_ms(10); }
     app_timer_start(advertisingUpdateTimer, APP_TIMER_TICKS(restart ? START_WAIT_TIME_MS : STOP_WAIT_TIME_MS), NULL);
     restart = !restart;
 }
 
-/**
- * @brief Function for application main entry.
- */
 int main(void)
 {
-    // Initialize.
-    log_init();
+    // log_init();
     timers_init();
-    leds_init();
     power_management_init();
     ble_stack_init();
     gap_params_init();
     advertising_init();
+    sd_power_dcdc_mode_set(true);
 
     // Timer
     ret_code_t err_code;
@@ -410,25 +365,25 @@ int main(void)
 
     app_timer_start(advertisingUpdateTimer, APP_TIMER_TICKS(START_WAIT_TIME_MS), NULL);
 
-    // Start execution.
-    NRF_LOG_INFO("MiniBee started");
-    NRF_LOG_INFO("Last modified 12.17.2019");
-
-    NRF_LOG_INFO("Expected:");
-    uint8_t data[30] = {0};
-    uint8_t dataLength = 30 / FREQUENCY_DIVIDER;
-    for (int i = 0; i < dataLength; i++) { data[i] = i+0xA1; }
-    queueStretchedData(data, dataLength, 30/dataLength);
-    for (int i = 1; i < 31; i++) { NRF_LOG_INFO("%02X", reverseByte(stretchedData[i])); }
-
-    // Use this one to print out and generate packets in MATLAB
-    // for (int i = 1; i < 31; i++) {
-    //     NRF_LOG_INFO("%02X", (stretchedData[i]));
-    // }
-
-    advertising_start();
-
     for (;;) {
         idle_state_handle();
     }
 }
+
+
+// Scratchpad
+// Start execution.
+// NRF_LOG_INFO("MiniBee started");
+// NRF_LOG_INFO("Last modified 12.17.2019");
+// NRF_LOG_INFO("Expected:");
+// uint8_t data[30] = {0};
+// uint8_t dataLength = 30 / FREQUENCY_DIVIDER;
+// for (int i = 0; i < dataLength; i++) { data[i] = i+0xA1; }
+// queueStretchedData(data, dataLength, 30/dataLength);
+// for (int i = 1; i < 31; i++) { NRF_LOG_INFO("%02X", reverseByte(stretchedData[i])); }
+
+// Use this one to print out and generate packets in MATLAB
+// for (int i = 1; i < 31; i++) {
+    // NRF_LOG_INFO("%02X", (stretchedData[i]));
+// }
+
