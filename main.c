@@ -302,8 +302,8 @@ static void queueStretchedData(uint8_t* data, uint8_t dataLength, uint8_t stretc
 #define FREQUENCY_DIVIDER 30
 
 #define START_WAIT_TIME_MS 19 // 500uA average current
-#define STOP_WAIT_TIME_MS 1
-// #define STOP_WAIT_TIME_MS 10000
+// #define STOP_WAIT_TIME_MS 1
+#define STOP_WAIT_TIME_MS 275
 
 static void advertisingUpdateTimerHandler(void * p_context)
 {
@@ -363,7 +363,7 @@ int main(void)
         advertisingUpdateTimerHandler);
     APP_ERROR_CHECK(err_code);
 
-    app_timer_start(advertisingUpdateTimer, APP_TIMER_TICKS(START_WAIT_TIME_MS), NULL);
+    app_timer_start(advertisingUpdateTimer, APP_TIMER_TICKS(5000), NULL);
 
     for (;;) {
         idle_state_handle();
