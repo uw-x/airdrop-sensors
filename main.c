@@ -109,8 +109,10 @@ static ble_gap_adv_params_t m_adv_params;                     /**< Parameters to
 static uint8_t m_adv_handle = BLE_GAP_ADV_SET_HANDLE_NOT_SET; /**< Advertising handle used to identify an advertising set. */
 static uint8_t m_enc_advdata[BLE_GAP_ADV_SET_DATA_SIZE_MAX];  /**< Buffer for storing an encoded advertising set. */
 
+APP_TIMER_DEF(ledUpdateTimer);
 APP_TIMER_DEF(advertisingUpdateTimer);
 static uint8_t advertisingChannel = 37;
+uint16_t testNumPackets = 100;
 
 static ble_gap_adv_data_t m_adv_data =
     {
@@ -299,11 +301,24 @@ static void queueStretchedData(uint8_t* data, uint8_t dataLength, uint8_t stretc
     }
 }
 
-#define FREQUENCY_DIVIDER 30
 
+static void ledUpdateTimerHandler(void * p_context)
+{
+    static uint8_t ledIndex = 3;
+
+    bsp_board_led_off(ledIndex--);
+
+    if (ledIndex) { app_timer_start(ledUpdateTimer, APP_TIMER_TICKS(1000), NULL); }
+}
+
+// FREQUENCY DIVIDER has to be between 1-30
+// 30: 33kbps
+// 15: 66kbps
+// 10: 100kbps
+#define FREQUENCY_DIVIDER 30
 #define START_WAIT_TIME_MS 19 // 500uA average current
 // #define STOP_WAIT_TIME_MS 1
-#define STOP_WAIT_TIME_MS 275
+#define STOP_WAIT_TIME_MS 1
 
 static void advertisingUpdateTimerHandler(void * p_context)
 {
@@ -312,11 +327,12 @@ static void advertisingUpdateTimerHandler(void * p_context)
     if (restart) {
         // rotate shift register until at first data bit
         // length:2 address:6 payloadLength:1
-        advertisingChannel = 37 + (((advertisingChannel+1) % 37) % 3);
+        // advertisingChannel = 37 + (((advertisingChannel+1) % 37) % 3);
+        advertisingChannel = 37;
 
         if (advertisingChannel == 37) { m_adv_params.channel_mask[4] = 0xC0; }
-        else if (advertisingChannel == 38) { m_adv_params.channel_mask[4] = 0xA0; }
-        else if (advertisingChannel == 39) { m_adv_params.channel_mask[4] = 0x60; }
+        // else if (advertisingChannel == 38) { m_adv_params.channel_mask[4] = 0xA0; }
+        // else if (advertisingChannel == 39) { m_adv_params.channel_mask[4] = 0x60; }
 
         whiten(0, true); // reset shift register
         for (int i = 0; i < 8; i++) { whiten(0, false); }
@@ -340,30 +356,54 @@ static void advertisingUpdateTimerHandler(void * p_context)
         advertising_start();
     } else {
         sd_ble_gap_adv_stop(m_adv_handle);
+        testNumPackets--;
     }
 
-    app_timer_start(advertisingUpdateTimer, APP_TIMER_TICKS(restart ? START_WAIT_TIME_MS : STOP_WAIT_TIME_MS), NULL);
+    if (testNumPackets) { app_timer_start(advertisingUpdateTimer,
+        APP_TIMER_TICKS(restart ? START_WAIT_TIME_MS : STOP_WAIT_TIME_MS), NULL);
+    } else {
+        bsp_board_led_off(0);
+        bsp_board_led_on(1);
+        bsp_board_led_on(2);
+        bsp_board_led_on(3);
+    }
+
     restart = !restart;
 }
 
 int main(void)
 {
-    // log_init();
+    log_init();
     timers_init();
     power_management_init();
     ble_stack_init();
     gap_params_init();
     advertising_init();
     sd_power_dcdc_mode_set(true);
+    leds_init();
 
-    // Timer
+    // Adv Timer
     ret_code_t err_code;
     err_code = app_timer_create(&advertisingUpdateTimer,
         APP_TIMER_MODE_SINGLE_SHOT,
         advertisingUpdateTimerHandler);
     APP_ERROR_CHECK(err_code);
 
-    app_timer_start(advertisingUpdateTimer, APP_TIMER_TICKS(5000), NULL);
+    // LED Timer
+    err_code = app_timer_create(&ledUpdateTimer,
+        APP_TIMER_MODE_SINGLE_SHOT,
+        ledUpdateTimerHandler);
+    APP_ERROR_CHECK(err_code);
+
+    app_timer_start(advertisingUpdateTimer, APP_TIMER_TICKS(100), NULL);
+    // app_timer_start(ledUpdateTimer, APP_TIMER_TICKS(1000), NULL);
+
+    NRF_LOG_INFO("MiniBee booted");
+    NRF_LOG_INFO("Packet error rate test started");
+
+    // bsp_board_led_on(1);
+    // bsp_board_led_on(2);
+    // bsp_board_led_on(3);
 
     for (;;) {
         idle_state_handle();
