@@ -98,6 +98,10 @@
                         0x89, 0x9a, 0xab, 0xbc, \
                         0xcd, 0xde, 0xef, 0xf0 /**< Proprietary UUID for Beacon. */
 
+//Radio transmit power in dBm 
+//(accepted values are -40, -20, -16, -12, -8, -4, 0, and 4 dBm)
+#define TX_POWER -40
+
 #define DEAD_BEEF 0xDEADBEEF /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
 
 #if defined(USE_UICR_FOR_MAJ_MIN_VALUES)
@@ -175,6 +179,9 @@ void advertising_init(void)
 void advertising_start(void)
 {
     ret_code_t err_code;
+    
+    // set power level     
+    err_code = sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_ADV, m_adv_handle, TX_POWER);
     err_code = sd_ble_gap_adv_start(m_adv_handle, APP_BLE_CONN_CFG_TAG);
     err_code = bsp_indication_set(BSP_INDICATE_ADVERTISING);
     APP_ERROR_CHECK(err_code);
@@ -312,12 +319,12 @@ static void advertisingUpdateTimerHandler(void * p_context)
     if (restart) {
         // rotate shift register until at first data bit
         // length:2 address:6 payloadLength:1
-        advertisingChannel = 37 + (((advertisingChannel+1) % 37) % 3);
+        /*advertisingChannel = 37 + (((advertisingChannel+1) % 37) % 3);
 
         if (advertisingChannel == 37) { m_adv_params.channel_mask[4] = 0xC0; }
         else if (advertisingChannel == 38) { m_adv_params.channel_mask[4] = 0xA0; }
         else if (advertisingChannel == 39) { m_adv_params.channel_mask[4] = 0x60; }
-
+*/
         whiten(0, true); // reset shift register
         for (int i = 0; i < 8; i++) { whiten(0, false); }
 
@@ -337,6 +344,7 @@ static void advertisingUpdateTimerHandler(void * p_context)
 
         // start advertising with m_adv_data and m_adv_params
         sd_ble_gap_adv_set_configure(&m_adv_handle, &m_adv_data, &m_adv_params);
+        
         advertising_start();
     } else {
         sd_ble_gap_adv_stop(m_adv_handle);
@@ -362,7 +370,6 @@ int main(void)
         APP_TIMER_MODE_SINGLE_SHOT,
         advertisingUpdateTimerHandler);
     APP_ERROR_CHECK(err_code);
-
     app_timer_start(advertisingUpdateTimer, APP_TIMER_TICKS(5000), NULL);
 
     for (;;) {
