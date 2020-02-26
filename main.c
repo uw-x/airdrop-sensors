@@ -100,7 +100,7 @@
 
 //Radio transmit power in dBm
 //(accepted values are -40, -20, -16, -12, -8, -4, 0, and 4 dBm)
-#define TX_POWER -40
+#define TX_POWER 4
 
 #define DEAD_BEEF 0xDEADBEEF /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
 
