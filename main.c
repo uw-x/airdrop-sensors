@@ -100,7 +100,7 @@
 
 //Radio transmit power in dBm
 //(accepted values are -40, -20, -16, -12, -8, -4, 0, and 4 dBm)
-#define TX_POWER -40
+#define TX_POWER 4
 
 #define DEAD_BEEF 0xDEADBEEF /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
 
@@ -324,7 +324,6 @@ static void ledUpdateTimerHandler(void * p_context)
 // 10: 100kbps
 #define FREQUENCY_DIVIDER 30
 #define START_WAIT_TIME_MS 19 // 500uA average current
-// #define STOP_WAIT_TIME_MS 1
 #define STOP_WAIT_TIME_MS 1
 
 static void advertisingUpdateTimerHandler(void * p_context)
@@ -364,7 +363,7 @@ static void advertisingUpdateTimerHandler(void * p_context)
         advertising_start();
     } else {
         sd_ble_gap_adv_stop(m_adv_handle);
-        testNumPackets--;
+        // testNumPackets--;
     }
 
     if (testNumPackets) { app_timer_start(advertisingUpdateTimer,
