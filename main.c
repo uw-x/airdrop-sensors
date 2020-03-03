@@ -74,64 +74,127 @@
 #include "nrf_log_default_backends.h"
 #include "nrf_delay.h"
 
+#include "nrf_ble_scan.h"
+#include "nrf_fstorage.h"
+#include "nrf_sdh_soc.h"
+
 // GAP INIT #DEFINES
-#define DEVICE_NAME "MINIBEE"
-#define MIN_CONN_INTERVAL MSEC_TO_UNITS(100, UNIT_1_25_MS) /**< Minimum acceptable connection interval (0.1 seconds). */
-#define MAX_CONN_INTERVAL MSEC_TO_UNITS(200, UNIT_1_25_MS) /**< Maximum acceptable connection interval (0.2 second). */
-#define SLAVE_LATENCY 0                                    /**< Slave latency. */
-#define CONN_SUP_TIMEOUT MSEC_TO_UNITS(4000, UNIT_10_MS)   /**< Connection supervisory timeout (4 seconds). */
+#define MIN_CONN_INTERVAL MSEC_TO_UNITS(100, UNIT_1_25_MS)              /**< Minimum acceptable connection interval (0.1 seconds). */
+#define MAX_CONN_INTERVAL MSEC_TO_UNITS(200, UNIT_1_25_MS)              /**< Maximum acceptable connection interval (0.2 second). */
+#define SLAVE_LATENCY 0                                                 /**< Slave latency. */
+#define CONN_SUP_TIMEOUT MSEC_TO_UNITS(4000, UNIT_10_MS)                /**< Connection supervisory timeout (4 seconds). */
 
-#define APP_BLE_CONN_CFG_TAG 1 /**< A tag identifying the SoftDevice BLE configuration. */
+#define APP_BLE_CONN_CFG_TAG        1                                   /**< A tag identifying the SoftDevice BLE configuration. */
+#define APP_BLE_OBSERVER_PRIO       3                                   /**< BLE observer priority of the application. There is no need to modify this value. */
+#define APP_SOC_OBSERVER_PRIO       1                                   /**< SoC observer priority of the application. There is no need to modify this value. */
 
-#define NON_CONNECTABLE_ADV_INTERVAL MSEC_TO_UNITS(20, UNIT_0_625_MS) /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
-// #define NON_CONNECTABLE_ADV_INTERVAL MSEC_TO_UNITS(1000, UNIT_10_MS)
+#define NON_CONNECTABLE_ADV_INTERVAL MSEC_TO_UNITS(20, UNIT_0_625_MS)   /**< The advertising interval for non-connectable advertisement (100 ms). This value can vary between 100ms to 10.24s). */
 
-#define APP_BEACON_INFO_LENGTH 0x17   /**< Total length of information advertised by the Beacon. */
-#define APP_ADV_DATA_LENGTH 0x15      /**< Length of manufacturer specific data in the advertisement. */
-#define APP_DEVICE_TYPE 0x02          /**< 0x02 refers to Beacon. */
-#define APP_MEASURED_RSSI 0xC3        /**< The Beacon's measured RSSI at 1 meter distance in dBm. */
-#define APP_COMPANY_IDENTIFIER 0x0059 /**< Company identifier for Nordic Semiconductor ASA. as per www.bluetooth.org. */
-#define APP_MAJOR_VALUE 0x01, 0x02    /**< Major value used to identify Beacons. */
-#define APP_MINOR_VALUE 0x03, 0x04    /**< Minor value used to identify Beacons. */
-#define APP_BEACON_UUID 0x01, 0x12, 0x23, 0x34, \
-                        0x45, 0x56, 0x67, 0x78, \
-                        0x89, 0x9a, 0xab, 0xbc, \
-                        0xcd, 0xde, 0xef, 0xf0 /**< Proprietary UUID for Beacon. */
+#define TX_POWER 4                                                      /** (accepted values are -40, -20, -16, -12, -8, -4, 0, and 4 dBm) */
 
-//Radio transmit power in dBm
-//(accepted values are -40, -20, -16, -12, -8, -4, 0, and 4 dBm)
-#define TX_POWER 4
+#define SCAN_INTERVAL               0x0320                              /**< Determines scan interval in units of 0.625 millisecond. */
+#define SCAN_WINDOW                 0x0320                              /**< Determines scan window in units of 0.625 millisecond. */
+#define SCAN_DURATION           	0x0000
 
-#define DEAD_BEEF 0xDEADBEEF /**< Value used as error code on stack dump, can be used to identify stack location on stack unwind. */
-
-#if defined(USE_UICR_FOR_MAJ_MIN_VALUES)
-#define MAJ_VAL_OFFSET_IN_BEACON_INFO 18 /**< Position of the MSB of the Major Value in m_beacon_info array. */
-#define UICR_ADDRESS 0x10001080          /**< Address of the UICR register used by this example. The major and minor versions to be encoded into the advertising data will be picked up from this location. */
-#endif
-
-static ble_gap_adv_params_t m_adv_params;                     /**< Parameters to be passed to the stack when starting advertising. */
-static uint8_t m_adv_handle = BLE_GAP_ADV_SET_HANDLE_NOT_SET; /**< Advertising handle used to identify an advertising set. */
-static uint8_t m_enc_advdata[BLE_GAP_ADV_SET_DATA_SIZE_MAX];  /**< Buffer for storing an encoded advertising set. */
-
-APP_TIMER_DEF(advertisingUpdateTimer);
+static ble_gap_adv_params_t m_adv_params;                               /**< Parameters to be passed to the stack when starting advertising. */
+static uint8_t m_adv_handle = BLE_GAP_ADV_SET_HANDLE_NOT_SET;           /**< Advertising handle used to identify an advertising set. */
+static uint8_t m_enc_advdata[BLE_GAP_ADV_SET_DATA_SIZE_MAX];            /**< Buffer for storing an encoded advertising set. */
+static bool    m_memory_access_in_progress;   /**< Flag to keep track of ongoing operations on persistent memory. */
 static uint8_t advertisingChannel = 37;
 
-static ble_gap_adv_data_t m_adv_data =
-    {
-        .adv_data =
-            {
-                .p_data = m_enc_advdata,
-                .len = BLE_GAP_ADV_SET_DATA_SIZE_MAX},
-        .scan_rsp_data =
-            {
-                .p_data = NULL,
-                .len = 0
+APP_TIMER_DEF(advertisingUpdateTimer);
+NRF_BLE_SCAN_DEF(m_scan);                                               /**< Scanning Module instance. */
 
-            }};
+static ble_gap_adv_data_t m_adv_data =
+{
+    .adv_data = {
+        .p_data = m_enc_advdata,
+        .len = BLE_GAP_ADV_SET_DATA_SIZE_MAX},
+    .scan_rsp_data = {
+        .p_data = NULL,
+        .len = 0 }
+};
+
+static ble_gap_scan_params_t m_scan_param =                 /**< Scan parameters requested for scanning and connection. */
+{
+    .active        = 0x00,
+    .interval      = SCAN_INTERVAL,
+    .window        = SCAN_WINDOW,
+    .filter_policy = BLE_GAP_SCAN_FP_ACCEPT_ALL,
+    .timeout       = SCAN_DURATION,
+    .scan_phys     = BLE_GAP_PHY_1MBPS,
+    .extended      = 0,
+    .channel_mask  = {0},
+};
+
+#define MY_TIMER            NRF_TIMER1
+#define MY_TIMER_IRQn       TIMER1_IRQn
+#define MY_TIMER_IRQHandler TIMER1_IRQHandler
+
+static uint32_t my_timer_seconds;
+
+static void my_timer_start(void)
+{
+    // Reset the second variable
+    my_timer_seconds = 0;
+
+    // Ensure the timer uses 24-bit bitmode or higher
+    MY_TIMER->BITMODE = TIMER_BITMODE_BITMODE_24Bit << TIMER_BITMODE_BITMODE_Pos;
+
+    // Set the prescaler to 4, for a timer interval of 1 us (16M / 2^4)
+    MY_TIMER->PRESCALER = 4;
+
+    // Set the CC[0] register to hit after 1 second
+    MY_TIMER->CC[0] = 1000000;
+
+    // Make sure the timer clears after reaching CC[0]
+    MY_TIMER->SHORTS = TIMER_SHORTS_COMPARE0_CLEAR_Msk;
+
+    // Trigger the interrupt when reaching CC[0]
+    MY_TIMER->INTENSET = TIMER_INTENSET_COMPARE0_Msk;
+
+    // Set a low IRQ priority and enable interrupts for the timer module
+    NVIC_SetPriority(MY_TIMER_IRQn, 7);
+    NVIC_EnableIRQ(MY_TIMER_IRQn);
+
+    // Clear and start the timer
+    MY_TIMER->TASKS_CLEAR = 1;
+    MY_TIMER->TASKS_START = 1;
+}
+
+uint32_t my_timer_get_ms(void)
+{
+    // Store the current value of the timer in the CC[1] register, by triggering the capture task
+    MY_TIMER->TASKS_CAPTURE[1] = 1;
+
+    // Combine the state of the second variable with the current timer state, and return the result
+    return (my_timer_seconds * 1000) + (MY_TIMER->CC[1] / 1000);
+}
+
+uint64_t my_timer_get_us(void)
+{
+    // Store the current value of the timer in the CC[1] register, by triggering the capture task
+    MY_TIMER->TASKS_CAPTURE[1] = 1;
+
+    // Combine the state of the second variable with the current timer state, and return the result
+    return (uint64_t)my_timer_seconds * 1000000 + MY_TIMER->CC[1];
+}
+
+// Timer interrupt handler
+void MY_TIMER_IRQHandler(void)
+{
+    if(MY_TIMER->EVENTS_COMPARE[0])
+    {
+        MY_TIMER->EVENTS_COMPARE[0] = 0;
+
+        // Increment the second variable
+        my_timer_seconds++;
+    }
+}
 
 void assert_nrf_callback(uint16_t line_num, const uint8_t *p_file_name)
 {
-    app_error_handler(DEAD_BEEF, line_num, p_file_name);
+    app_error_handler(0xDEADBEEF, line_num, p_file_name);
 }
 
 void gap_params_init(void)
@@ -187,6 +250,110 @@ void advertising_start(void)
     APP_ERROR_CHECK(err_code);
 }
 
+static uint8_t expectedBytes[31] = {
+    0x1E,0xCE,0xEE,0xB7,0xA9,0x77,0xF8,0xE3,
+    0xB6,0x16,0x54,0x2F,0x9D,0x53,0x33,0xD8,
+    0xBA,0x98,0x08,0x24,0xCB,0x3B,0xFC,0x71,
+    0xA3,0xF4,0x55,0x94,0x30,0x56,0xE6
+};
+
+static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
+{
+    static uint16_t packetsReceived = 0;
+
+    switch (p_ble_evt->header.evt_id) {
+        case BLE_GAP_EVT_ADV_REPORT: {
+            ble_gap_evt_t gapEvent = p_ble_evt->evt.gap_evt;
+            ble_gap_evt_adv_report_t advReport = gapEvent.params.adv_report;
+
+            if ((advReport.ch_index == 37) && (advReport.data.len == 31)) {
+                // NRF_LOG_RAW_INFO("channelIndex  %d\r\n", advReport.ch_index);
+                // for (int i = 0; i < advReport.data.len; i++) {
+                //     NRF_LOG_RAW_INFO("%02X ", advReport.data.p_data[i]);
+                //     if (((i+1) % 8) == 0) { NRF_LOG_RAW_INFO("\r\n"); }
+                // }   NRF_LOG_RAW_INFO("\r\n");
+
+                uint8_t mismatchedBytes = 0;
+                for (uint8_t i = 0; i < advReport.data.len; i++) {
+                    if (advReport.data.p_data[i] != expectedBytes[i]) {
+                        mismatchedBytes++;
+                    }
+                }
+
+                if (!mismatchedBytes) {
+                    NRF_LOG_RAW_INFO("%d | ", my_timer_get_ms());
+                    NRF_LOG_RAW_INFO("rssi %d ", advReport.rssi);
+                    NRF_LOG_RAW_INFO ("total %d", ++packetsReceived);
+                    NRF_LOG_RAW_INFO("\r\n");
+                }
+
+                // NRF_LOG_RAW_INFO ("------------------------\r\n");
+            }
+            break;
+        }
+
+        default: {
+            NRF_LOG_RAW_INFO ("Unsupported header event: %d\r\n", p_ble_evt->header.evt_id);
+            break;
+        }
+
+    }
+}
+
+static void scan_start(void)
+{
+    ret_code_t err_code;
+
+    err_code = nrf_ble_scan_start(&m_scan);
+    APP_ERROR_CHECK(err_code);
+}
+
+
+static void scan_evt_handler(scan_evt_t const * p_scan_evt)
+{
+    switch(p_scan_evt->scan_evt_id) {
+        case NRF_BLE_SCAN_EVT_SCAN_TIMEOUT: {
+            NRF_LOG_INFO("Scan timed out.");
+            scan_start();
+        } break;
+
+        default: {
+            // NRF_LOG_RAW_INFO ("Unsupported scan event: %d\r\n", p_scan_evt->scan_evt_id);
+            break;
+        }
+    }
+}
+
+static void scan_init(void)
+{
+    ret_code_t          err_code;
+    nrf_ble_scan_init_t init_scan;
+
+    memset(&init_scan, 0, sizeof(init_scan));
+
+    init_scan.connect_if_match = false;
+    init_scan.conn_cfg_tag     = APP_BLE_CONN_CFG_TAG;
+    init_scan.p_scan_param     = &m_scan_param;
+
+    err_code = nrf_ble_scan_init(&m_scan, &init_scan, scan_evt_handler);
+    APP_ERROR_CHECK(err_code);
+}
+
+static void soc_evt_handler(uint32_t evt_id, void * p_context)
+{
+    switch (evt_id) {
+        case NRF_EVT_FLASH_OPERATION_SUCCESS:
+        case NRF_EVT_FLASH_OPERATION_ERROR:
+            if (m_memory_access_in_progress) {
+                m_memory_access_in_progress = false;
+                scan_start();
+            }
+            break;
+        default:
+            break;
+    }
+}
+
 void ble_stack_init(void)
 {
     ret_code_t err_code;
@@ -203,6 +370,10 @@ void ble_stack_init(void)
     // Enable BLE stack.
     err_code = nrf_sdh_ble_enable(&ram_start);
     APP_ERROR_CHECK(err_code);
+
+    // Register event handling
+    NRF_SDH_BLE_OBSERVER(m_ble_observer, APP_BLE_OBSERVER_PRIO, ble_evt_handler, NULL);
+    NRF_SDH_SOC_OBSERVER(m_soc_observer, APP_SOC_OBSERVER_PRIO, soc_evt_handler, NULL);
 }
 
 void log_init(void)
@@ -211,12 +382,6 @@ void log_init(void)
     APP_ERROR_CHECK(err_code);
 
     NRF_LOG_DEFAULT_BACKENDS_INIT();
-}
-
-void leds_init(void)
-{
-    ret_code_t err_code = bsp_init(BSP_INIT_LEDS, NULL);
-    APP_ERROR_CHECK(err_code);
 }
 
 static void timers_init(void)
@@ -356,7 +521,7 @@ static void advertisingUpdateTimerHandler(void * p_context)
 
 int main(void)
 {
-    // log_init();
+    log_init();
     timers_init();
     power_management_init();
     ble_stack_init();
@@ -370,7 +535,13 @@ int main(void)
         APP_TIMER_MODE_SINGLE_SHOT,
         advertisingUpdateTimerHandler);
     APP_ERROR_CHECK(err_code);
+
     app_timer_start(advertisingUpdateTimer, APP_TIMER_TICKS(5000), NULL);
+    my_timer_start();
+
+    // Scan initialization
+    scan_init();
+    scan_start();
 
     for (;;) {
         idle_state_handle();
