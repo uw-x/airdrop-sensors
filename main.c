@@ -117,80 +117,15 @@ static ble_gap_adv_data_t m_adv_data =
 
 static ble_gap_scan_params_t m_scan_param =                 /**< Scan parameters requested for scanning and connection. */
 {
-    .active        = 0x00,
+    .active        = 0x0,
     .interval      = SCAN_INTERVAL,
     .window        = SCAN_WINDOW,
     .filter_policy = BLE_GAP_SCAN_FP_ACCEPT_ALL,
     .timeout       = SCAN_DURATION,
     .scan_phys     = BLE_GAP_PHY_1MBPS,
     .extended      = 0,
-    .channel_mask  = {0},
+    .channel_mask  = {0x0, 0x0, 0x0, 0x0, 0xC0},
 };
-
-#define MY_TIMER            NRF_TIMER1
-#define MY_TIMER_IRQn       TIMER1_IRQn
-#define MY_TIMER_IRQHandler TIMER1_IRQHandler
-
-static uint32_t my_timer_seconds;
-
-static void my_timer_start(void)
-{
-    // Reset the second variable
-    my_timer_seconds = 0;
-
-    // Ensure the timer uses 24-bit bitmode or higher
-    MY_TIMER->BITMODE = TIMER_BITMODE_BITMODE_24Bit << TIMER_BITMODE_BITMODE_Pos;
-
-    // Set the prescaler to 4, for a timer interval of 1 us (16M / 2^4)
-    MY_TIMER->PRESCALER = 4;
-
-    // Set the CC[0] register to hit after 1 second
-    MY_TIMER->CC[0] = 1000000;
-
-    // Make sure the timer clears after reaching CC[0]
-    MY_TIMER->SHORTS = TIMER_SHORTS_COMPARE0_CLEAR_Msk;
-
-    // Trigger the interrupt when reaching CC[0]
-    MY_TIMER->INTENSET = TIMER_INTENSET_COMPARE0_Msk;
-
-    // Set a low IRQ priority and enable interrupts for the timer module
-    NVIC_SetPriority(MY_TIMER_IRQn, 7);
-    NVIC_EnableIRQ(MY_TIMER_IRQn);
-
-    // Clear and start the timer
-    MY_TIMER->TASKS_CLEAR = 1;
-    MY_TIMER->TASKS_START = 1;
-}
-
-uint32_t my_timer_get_ms(void)
-{
-    // Store the current value of the timer in the CC[1] register, by triggering the capture task
-    MY_TIMER->TASKS_CAPTURE[1] = 1;
-
-    // Combine the state of the second variable with the current timer state, and return the result
-    return (my_timer_seconds * 1000) + (MY_TIMER->CC[1] / 1000);
-}
-
-uint64_t my_timer_get_us(void)
-{
-    // Store the current value of the timer in the CC[1] register, by triggering the capture task
-    MY_TIMER->TASKS_CAPTURE[1] = 1;
-
-    // Combine the state of the second variable with the current timer state, and return the result
-    return (uint64_t)my_timer_seconds * 1000000 + MY_TIMER->CC[1];
-}
-
-// Timer interrupt handler
-void MY_TIMER_IRQHandler(void)
-{
-    if(MY_TIMER->EVENTS_COMPARE[0])
-    {
-        MY_TIMER->EVENTS_COMPARE[0] = 0;
-
-        // Increment the second variable
-        my_timer_seconds++;
-    }
-}
 
 void assert_nrf_callback(uint16_t line_num, const uint8_t *p_file_name)
 {
@@ -259,8 +194,6 @@ static uint8_t expectedBytes[31] = {
 
 static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
 {
-    static uint16_t packetsReceived = 0;
-
     switch (p_ble_evt->header.evt_id) {
         case BLE_GAP_EVT_ADV_REPORT: {
             ble_gap_evt_t gapEvent = p_ble_evt->evt.gap_evt;
@@ -281,10 +214,9 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
                 }
 
                 if (!mismatchedBytes) {
-                    NRF_LOG_RAW_INFO("%d | ", my_timer_get_ms());
-                    NRF_LOG_RAW_INFO("rssi %d ", advReport.rssi);
-                    NRF_LOG_RAW_INFO ("total %d", ++packetsReceived);
-                    NRF_LOG_RAW_INFO("\r\n");
+                    nrf_gpio_pin_set(28);
+                    nrf_ble_scan_stop();
+                    app_timer_start(advertisingUpdateTimer, APP_TIMER_TICKS(5000), NULL);
                 }
 
                 // NRF_LOG_RAW_INFO ("------------------------\r\n");
@@ -536,12 +468,13 @@ int main(void)
         advertisingUpdateTimerHandler);
     APP_ERROR_CHECK(err_code);
 
-    app_timer_start(advertisingUpdateTimer, APP_TIMER_TICKS(5000), NULL);
-    my_timer_start();
-
     // Scan initialization
     scan_init();
     scan_start();
+
+    // Set up gpio
+    nrf_gpio_cfg_output(28);
+    nrf_gpio_pin_clear(28);
 
     for (;;) {
         idle_state_handle();
