@@ -92,8 +92,8 @@
 
 #define TX_POWER 4                                                      /** (accepted values are -40, -20, -16, -12, -8, -4, 0, and 4 dBm) */
 
-#define SCAN_INTERVAL               0x0320                              /**< Determines scan interval in units of 0.625 millisecond. */
-#define SCAN_WINDOW                 0x0320                              /**< Determines scan window in units of 0.625 millisecond. */
+#define SCAN_INTERVAL               0x0640                              /**< Determines scan interval in units of 0.625 millisecond. */
+#define SCAN_WINDOW                 0x0020                              /**< Determines scan window in units of 0.625 millisecond. */
 #define SCAN_DURATION           	0x0000
 
 static ble_gap_adv_params_t m_adv_params;                               /**< Parameters to be passed to the stack when starting advertising. */
@@ -214,7 +214,9 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
                 }
 
                 if (!mismatchedBytes) {
-                    nrf_gpio_pin_set(28);
+                    nrf_gpio_pin_clear(29); // disconnect cap
+                    nrf_delay_us(1000);
+                    nrf_gpio_pin_set(28); // connect release
                     nrf_ble_scan_stop();
                     app_timer_start(advertisingUpdateTimer, APP_TIMER_TICKS(5000), NULL);
                 }
@@ -235,7 +237,6 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
 static void scan_start(void)
 {
     ret_code_t err_code;
-
     err_code = nrf_ble_scan_start(&m_scan);
     APP_ERROR_CHECK(err_code);
 }
@@ -473,8 +474,13 @@ int main(void)
     scan_start();
 
     // Set up gpio
+    // Don't set release gpio
     nrf_gpio_cfg_output(28);
     nrf_gpio_pin_clear(28);
+
+    // Charge cap
+    nrf_gpio_cfg_output(29);
+    nrf_gpio_pin_set(29);
 
     for (;;) {
         idle_state_handle();
