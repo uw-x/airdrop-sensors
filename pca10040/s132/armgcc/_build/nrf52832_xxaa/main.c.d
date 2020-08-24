@@ -123,7 +123,10 @@ _build/nrf52832_xxaa/main.c.o: ../../../main.c \
  /usr/local/Cellar/gcc-arm-none-eabi/20180627/arm-none-eabi/include/machine/stdlib.h \
  ../../../../../../components/libraries/balloc/nrf_balloc.h \
  ../../../../../../components/libraries/log/nrf_log_default_backends.h \
- ../../../../../../components/libraries/delay/nrf_delay.h
+ ../../../../../../components/libraries/delay/nrf_delay.h \
+ ../../../../../../components/ble/nrf_ble_scan/nrf_ble_scan.h \
+ ../../../../../../components/libraries/fstorage/nrf_fstorage.h \
+ ../../../../../../components/softdevice/common/nrf_sdh_soc.h
 
 /usr/local/Cellar/gcc-arm-none-eabi/20180627/lib/gcc/arm-none-eabi/7.3.1/include/stdbool.h:
 
@@ -374,3 +377,9 @@ _build/nrf52832_xxaa/main.c.o: ../../../main.c \
 ../../../../../../components/libraries/log/nrf_log_default_backends.h:
 
 ../../../../../../components/libraries/delay/nrf_delay.h:
+
+../../../../../../components/ble/nrf_ble_scan/nrf_ble_scan.h:
+
+../../../../../../components/libraries/fstorage/nrf_fstorage.h:
+
+../../../../../../components/softdevice/common/nrf_sdh_soc.h:
