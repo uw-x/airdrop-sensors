@@ -6,14 +6,20 @@ We present the first system that can airdrop wireless sensors from small drones 
 ## Setup
 1. Download nRF SDK
 -  Go to https://www.nordicsemi.com/Software-and-Tools/Software/nRF5-SDK/Download#infotabs
--  Select Version 15.3.0 and download it
+-  Download the latest SDK
 -  Unzip the .zip to a high level directory (e.g. C:\ on Windows, or home directory on linux/mac)
--  Update GNU_INSTALL_ROOT (path of your gcc) inside Makefile.posix. Details can be found here: https://aaroneiche.com/2016/06/01/programming-an-nrf52-on-a-mac/
-2. Clone the repo
+2. Install toolchains 
+-  Install gcc-arm-none-eabi using 'brew install gcc-arm-none-eabi'
+-  Update GNU_INSTALL_ROOT (path of your gcc) inside Makefile.posix of the unzipped SDK. If you installed using brew, the path should be /usr/local/Cellar/gcc-arm-none-eabi/20180627/bin/
+-  Install nordic command line tools from here: https://www.nordicsemi.com/Software-and-tools/Development-Tools/nRF-Command-Line-Tools/Download. Unzip, and move the nrfjprog directory to /usr/local/. Finally, add this to your PATH inside .bash_profile with this change: export PATH=/usr/local/bin:/usr/local/sbin:/usr/local/nrfjprog:$PATH
+-  Validate that this worked by opening a new terminal and typing 'nrfjprog --version' as a sanity check
+3. Clone the repo
 -  Clone in this location: path/to/zip/SDK/examples/ble_peripheral
-3. Build and flash
+4. Build and flash
 -  CD into pca10040/s132/armgcc
 -  Run 'make flash' in terminal to build and flash 
+
+If you have any trouble installing, feel free to reach out, more details for setting up on a mac can be found here: https://aaroneiche.com/2016/06/01/programming-an-nrf52-on-a-mac/
 
 ## Branches
 This repository includes three branches:
